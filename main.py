@@ -137,10 +137,11 @@ else:
     res = json.loads(submitPaper(token, activityId))
     if res["status"] == 200:
         logger.success("交卷成功")
-        logger.info(f"得分：{res['data']['result']['score']}分，状态：{res['data']['result']['passedLable']}，用时：{res['data']['result']['useTimeLable']}")
+        logger.info(f"得分：{res['data']['result']['score']}分，状态：{res['data']['result']['passedLable']}，用时：{res['data']['result']['useTimeLabel']}")
     else:
         logger.error(f"出错了，错误：{res['message']}")
 logger.success("程序完全结束.")
 res = json.loads(logout())
 logger.success(f"登出成功，{userName}，感谢使用！")
+
 input()
