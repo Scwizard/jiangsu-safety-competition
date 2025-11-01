@@ -1,5 +1,5 @@
 from loguru import logger
-from utils import pwdEncrypt, searchCollegeByName, getCaptcha, login, logout, getUserIndex, getActivities, recordQuestion, startPaper, preparePaper, getNear, submitPaper, index, preparePaperPractice, startPaperPractice, submitPaperPractice, recordQuestionPractice
+from utils import pwdEncrypt, searchCollegeByName, getCaptcha, login, logout, getUserIndex, getActivities, recordQuestion, startPaper, preparePaper, getNear, submitPaper, index, preparePaperPractice, startPaperPractice, submitPaperPractice, recordQuestionPractice, ocrCaptcha, openCapthca
 from dbProcess import request_data
 import requests
 import json
@@ -30,7 +30,7 @@ username = input("请输入用户名：")
 logger.info("请输入密码")
 password = input("请输入密码：")
 password = pwdEncrypt(password) # MD5 32大
-logger.info("请输入验证码")
+logger.info("Captcha流程开始")
 timestamp = str(int(time.time() * 1000))
 try:
     getCaptcha(timestamp)
@@ -38,20 +38,33 @@ except:
     logger.error("验证码处理失败！")
     input("验证码处理失败，程序退出。")
     exit()
-captcha = input("请输入验证码[按回车键刷新]：")
-while captcha == "":
-    logger.info("验证码已刷新.")
-    timestamp = str(int(time.time() * 1000))
-    getCaptcha(timestamp)
-    captcha = input("请输入验证码[按回车键刷新]：")
-logger.info("OK，正在进行登录流程...")
+captcha = ocrCaptcha()
+logger.info(f"验证码识别为：{captcha}")
 res = json.loads(login(tenant=schoolCode, username=username,passwordE=password,captcha=captcha,timestamp=timestamp))
-userData = json.loads(getUserIndex())
+logger.info("尝试进行登录流程...")
 if res["success"] == True:
     logger.success("登录成功，你好，%s ！" % res["data"]["result"]["realName"])
     userName = res["data"]["result"]["realName"]
 else:
-    logger.error(res["message"])
+    logger.warning(logger.error(res["message"]))
+    logger.warning("登录失败！")
+    openCapthca()
+    captcha = input("文字识别失败 请手动输入验证码[按回车键刷新]：")
+    while captcha == "":
+        logger.info("验证码已刷新.")
+        timestamp = str(int(time.time() * 1000))
+        getCaptcha(timestamp)
+        captcha = input("请手动输入验证码[按回车键刷新]：")
+        openCapthca()
+    res = json.loads(login(tenant=schoolCode, username=username,passwordE=password,captcha=captcha,timestamp=timestamp))
+    if res["success"] == True:
+        logger.info("登录成功！")
+    else:
+        logger.error(logger.error(res["message"]))
+        logger.error("登陆失败！")
+        input()
+        exit()
+userData = json.loads(getUserIndex())
 token = res["data"]["result"]["token"]
 activities = json.loads(getActivities(token))
 activityList = []
@@ -137,12 +150,10 @@ else:
     res = json.loads(submitPaper(token, activityId))
     if res["status"] == 200:
         logger.success("交卷成功")
-        logger.info(f"得分：{res['data']['result']['score']}分，状态：{res['data']['result']['passedLabel']}，用时：{res['data']['result']['useTimeLabel']}")
+        logger.info(f"得分：{res['data']['result']['score']}分，状态：{res['data']['result']['passedLable']}，用时：{res['data']['result']['useTimeLable']}")
     else:
         logger.error(f"出错了，错误：{res['message']}")
 logger.success("程序完全结束.")
 res = json.loads(logout())
-logger.success(f"登出成功，{userName}，感谢使用！")
-
+logger.success(f"登出成功，{userName}，感谢使用！作者：Scwizard，b站同名")
 input()
-
