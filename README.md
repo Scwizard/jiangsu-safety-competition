@@ -6,6 +6,10 @@ jiangsu-safety-competition
 
 如果您是普通用户，您可以下载右边的Release版本，右键，选择以管理员身份运行。
 
+本程序分为带OCR和不带OCR两个版本，如需OCR版本的源码，请前往[此处]("https://github.com/Scwizard/jiangsu-safety-competition-ocr")
+
+使用OCR功能对Python版本有着严格的要求。
+
 如果您是专业用户，以下提供方法以运行此脚本：
 
 1.安装Python3，确保环境变量配置正确。
