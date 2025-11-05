@@ -1,8 +1,6 @@
 # 工具类
 import hashlib
 import requests
-import ddddocr
-import webbrowser
 import os
 
 Headers = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"}
@@ -43,20 +41,13 @@ def searchCollegeByName(collegeName, schoolList):
         return narrowIdList[index]
 
 def getCaptcha(timestamp):
+    filename = "captcha.png"
+    data = {"timestamp":timestamp}
     captcha = requests.get("https://mars.mycourse.cn/marsapi/api/login/v1/getCaptcha?timestamp=%s" % timestamp)
     with open("captcha.png","wb") as f:
         f.write(captcha.content)
+    os.startfile("captcha.png")
     return True
-
-def ocrCaptcha():
-    ocr = ddddocr.DdddOcr(show_ad=False)
-    with open('captcha.png', 'rb') as f:
-        image = f.read()
-        res = ocr.classification(image)
-        return res
-
-def openCapthca():
-    webbrowser.open(f"file://{os.path.abspath('captcha.png')}")
 
 def login(tenant, username, passwordE, captcha, timestamp):
     data = {
