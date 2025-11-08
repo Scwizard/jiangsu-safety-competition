@@ -31,20 +31,26 @@ username = input("请输入用户名：")
 logger.info("请输入密码")
 password = input("请输入密码：")
 password = pwdEncrypt(password) # MD5 32大
-logger.info("请输入验证码")
+logger.info("处理验证码...")
 timestamp = str(int(time.time() * 1000))
 try:
-    getCaptcha(timestamp)
+    status = getCaptcha(timestamp)
 except:
     logger.error("验证码处理失败！[如果您使用的是.exe版本，请尝试运行源代码]")
     input("验证码处理失败，程序退出。")
     exit()
-captcha = input("请输入验证码[按回车键刷新]：")
+if status == True:
+    captcha = input("请输入验证码[按回车键刷新]：")
+else:
+    captcha = input("请打开文件夹中的captcha文件并输入验证码[按回车键刷新]：")
 while captcha == "":
     logger.info("验证码已刷新.")
     timestamp = str(int(time.time() * 1000))
-    getCaptcha(timestamp)
-    captcha = input("请输入验证码[按回车键刷新]：")
+    status = getCaptcha(timestamp)
+    if status == True:
+        captcha = input("请输入验证码[按回车键刷新]：")
+    else:
+        captcha = input("请打开文件夹中的captcha文件并输入验证码[按回车键刷新]：")
 logger.info("OK，正在进行登录流程...")
 res = json.loads(login(tenant=schoolCode, username=username,passwordE=password,captcha=captcha,timestamp=timestamp))
 userData = json.loads(getUserIndex())
