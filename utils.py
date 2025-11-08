@@ -46,8 +46,13 @@ def getCaptcha(timestamp):
     captcha = requests.get("https://mars.mycourse.cn/marsapi/api/login/v1/getCaptcha?timestamp=%s" % timestamp)
     with open("captcha.png","wb") as f:
         f.write(captcha.content)
-    os.startfile("captcha.png")
-    return True
+    try:
+        os.startfile("captcha.png")
+        return True
+    except FileNotFoundError as e:
+        print(f"尝试打开失败，请手动在文件夹中打开captcha，错误：{e}")
+        os.startfile(os.getcwd())
+        return False
 
 def login(tenant, username, passwordE, captcha, timestamp):
     data = {
