@@ -1,12 +1,12 @@
-# ”江苏省第十四届大学生安全知识竞赛“脚本
+# ”江苏省第十五届大学生安全知识竞赛“脚本
 
 jiangsu-safety-competition
 
 **🤔 食用指导**
 
-如果您是普通用户，您可以下载右边的Release版本，右键，选择以管理员身份运行。
+如果您是普通用户，请直接下载右边的Release版本，右键，选择以管理员身份运行。
 
-本程序分为带OCR和不带OCR两个版本，如需OCR版本的源码，请前往 [此处]("https://github.com/Scwizard/jiangsu-safety-competition-ocr")
+本程序分为带OCR和不带OCR两个版本，如需OCR版本的源码，请前往 https://github.com/Scwizard/jiangsu-safety-competition-ocr
 
 使用OCR功能对Python版本有着严格的要求。
 
@@ -28,7 +28,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 欢迎提交 Issue 来交换您的看法和对脚本的更多建议！
 
-——南晓25届新生 Scwizard
+——南晓 Scwizard
 
 😋 **饿饿 饭饭**
 
