@@ -22,6 +22,12 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 3.运行主程序 main.py ，按照程序提示输入即可。
 
+4.打包的话...非常的麻烦，要避免tqdm的爆炸问题，推荐使用以下命令：
+
+```
+pyinstaller --add-data "utils.py:." --add-data "database.db:." --add-data "dbProcess.py:." --add-data "donation.jpg:." --onefile --exclude-module pandas --exclude-module matplotlib --exclude-module IPython --exclude-module ipywidgets main.py
+```
+
 ✒️ **进阶**
 
 程序开发耗时较短，许多功能不完善，还请各位大佬谅解。
