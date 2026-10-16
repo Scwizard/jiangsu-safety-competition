@@ -1,9 +1,24 @@
 # 工具类
+# 喵喵喵
 import hashlib
 import requests
 import os
+import ddddocr
 
-Headers = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"}
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+Headers = {"User-Agent":UA}
+
+def authCookies(token):
+    return {"mars_token":token}
+
+def authHeaders(token):
+    # 新版前端除 cookie 外还会带 Authorization 和来源信息，这里照做
+    return {
+        "User-Agent":UA,
+        "Authorization":token,
+        "Origin":"https://mars.mycourse.cn",
+        "Referer":"https://mars.mycourse.cn/deimos/"
+        }
 
 def pwdEncrypt(text):
     md5 = hashlib.md5()
@@ -41,18 +56,17 @@ def searchCollegeByName(collegeName, schoolList):
         return narrowIdList[index]
 
 def getCaptcha(timestamp):
-    filename = "captcha.png"
-    data = {"timestamp":timestamp}
     captcha = requests.get("https://mars.mycourse.cn/marsapi/api/login/v1/getCaptcha?timestamp=%s" % timestamp)
     with open("captcha.png","wb") as f:
         f.write(captcha.content)
-    try:
-        os.startfile("captcha.png")
-        return True
-    except FileNotFoundError as e:
-        print(f"尝试打开失败，请手动在文件夹中打开captcha，错误：{e}")
-        os.startfile(os.getcwd())
-        return False
+    return True
+
+# def ocrCaptcha():
+#     ocr = ddddocr.DdddOcr(show_ad=False)
+#     with open('captcha.png', 'rb') as f:
+#         image = f.read()
+#         res = ocr.classification(image)
+#         return res
 
 def login(tenant, username, passwordE, captcha, timestamp):
     data = {
@@ -74,96 +88,86 @@ def getUserIndex():
     return res.text
 
 def getActivities(token):
-    Cookies = {"mars_token":token}
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/project/v1/index", cookies=Cookies, headers=Headers)
+    Cookies = authCookies(token)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/project/v1/index", cookies=Cookies, headers=authHeaders(token))
     return res.text
 
 def recordQuestion(token, questionId, userActivityId, useTime, answerIds):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "questionId":questionId,
         "userActivityId":userActivityId,
         "useTime":useTime,
         "answerIds":answerIds
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/recordQuestion", cookies=Cookies, data=data, headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/recordQuestion", cookies=Cookies, data=data, headers=authHeaders(token))
     return res.text
 
 def preparePaper(token, activityId):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "userActivityId":activityId
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/preparePaper", data=data, cookies=Cookies, headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/preparePaper", data=data, cookies=Cookies, headers=authHeaders(token))
     return res.text
 
 def startPaper(token, activityId):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "userActivityId":activityId
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/startPaper", cookies=Cookies, data=data, headers=Headers)
-    return res.text
-
-def getNear(token, activityId, seq):
-    Cookies = {"mars_token":token}
-    data = {
-        "userActivityId":activityId,
-        "currentIndex":seq,
-        "nearType":2
-        }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/practice/activity/practice/v1/getNear", data=data, cookies=Cookies, headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/startPaper", cookies=Cookies, data=data, headers=authHeaders(token))
     return res.text
 
 def submitPaper(token, activityId):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "userActivityId":activityId,
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/submitPaper", data=data, cookies=Cookies,headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/exam/v1/submitPaper", data=data, cookies=Cookies,headers=authHeaders(token))
     return res.text
 
 def index(token):
-    Cookies = {"mars_token":token}
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/user/v1/index", cookies=Cookies)
+    Cookies = authCookies(token)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/user/v1/index", cookies=Cookies, headers=authHeaders(token))
     return res.text
 # 练习
 def preparePaperPractice(token, activityId):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "userActivityId":activityId
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/preparePaper", data=data, cookies=Cookies, headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/preparePaper", data=data, cookies=Cookies, headers=authHeaders(token))
     return res.text
 
 def startPaperPractice(token, activityId):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "userActivityId":activityId
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/startPaper", cookies=Cookies, data=data, headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/startPaper", cookies=Cookies, data=data, headers=authHeaders(token))
     return res.text
 
 def getNear(token, activityId, seq):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "userActivityId":activityId,
         "currentIndex":seq,
         "nearType":2
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/getNear", data=data, cookies=Cookies, headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/getNear", data=data, cookies=Cookies, headers=authHeaders(token))
     return res.text
 
 def submitPaperPractice(token, activityId):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "userActivityId":activityId,
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/submitPaper", data=data, cookies=Cookies,headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/submitPaper", data=data, cookies=Cookies,headers=authHeaders(token))
     return res.text
 
 def recordQuestionPractice(token, questionId, userActivityId, useTime,currentIndex, answerIds):
-    Cookies = {"mars_token":token}
+    Cookies = authCookies(token)
     data = {
         "questionId":questionId,
         "userActivityId":userActivityId,
@@ -171,5 +175,5 @@ def recordQuestionPractice(token, questionId, userActivityId, useTime,currentInd
         "currentIndex":currentIndex,
         "answerIds":answerIds
         }
-    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/recordQuestion", cookies=Cookies, data=data, headers=Headers)
+    res = requests.post("https://mars.mycourse.cn/marsapi/api/study/activity/practice/v1/recordQuestion", cookies=Cookies, data=data, headers=authHeaders(token))
     return res.text
