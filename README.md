@@ -40,6 +40,7 @@ pyinstaller --add-data "utils.py:." --add-data "database.db:." --add-data "dbPro
 
 ![donation](https://raw.githubusercontent.com/Scwizard/jiangsu-safety-competition/refs/heads/main/donation.jpg)
 
-## 👇我去还有这好事![donation](https://imgoss.qijieya.cn/imgoss/42/6ad88bff56749.png)
+## 👇我去还有这好事 ##
+![donation](https://imgoss.qijieya.cn/imgoss/42/6ad88bff56749.png)
 
-### 
+
