@@ -22,11 +22,6 @@ def apiMessage(res):
         return res.get("message", res)
     return res
 
-def abort(message):
-    logger.error(message)
-    input("按回车退出。")
-    exit()
-
 def pickWrongAnswer(question, rightAnswer):
     # 知道正确答案时挑本卷内确定错的选项；不知道时用占位错答，保证这道题不得分
     if rightAnswer is None:
@@ -68,6 +63,162 @@ def saveMissing(missingList):
     history.extend(item for item in missingList if item["id"] not in known)
     with open(MISSING_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
+
+def readInt(prompt, minimum=None, maximum=None):
+    while True:
+        raw = input(prompt).strip()
+        try:
+            value = int(raw)
+        except ValueError:
+            logger.error("请输入整数。")
+            continue
+        if minimum is not None and value < minimum:
+            logger.error("输入值不能小于 %i。" % minimum)
+            continue
+        if maximum is not None and value > maximum:
+            logger.error("输入值不能大于 %i。" % maximum)
+            continue
+        return value
+
+def runPracticeTask(token, activityId):
+    logger.info("进入练习流程")
+    res = json.loads(preparePaperPractice(token, activityId))
+    if not isSuccess(res):
+        logger.error("创建练习失败：%s" % apiMessage(res))
+        return False
+    res = json.loads(startPaperPractice(token, activityId))
+    if not isSuccess(res):
+        logger.error("开始练习失败：%s" % apiMessage(res))
+        return False
+    learned = 0
+    existed = 0
+    noAnswer = 0
+    for seq in range(0,10):
+        res = json.loads(getNear(token, activityId, seq))
+        if not isSuccess(res):
+            logger.error("第 %i 页题目获取失败：%s" % (seq, apiMessage(res)))
+            return False
+        logger.info("页面请求：%i/9" % seq)
+        for question in tqdm(res["data"]["result"]["questionList"], desc="答题进度"):
+            questionId = question["id"]
+            answerList = ",".join(option["id"] for option in question["optionList"] if option.get("isCorrect") == 1)
+            if answerList:
+                state = insert_data(questionId, answerList)
+                if state is None:
+                    logger.warning("题库写入失败：%s" % questionId)
+                elif state:
+                    learned += 1
+                else:
+                    existed += 1
+            else:
+                noAnswer += 1
+            res = json.loads(recordQuestionPractice(token, questionId, activityId, 10, seq, answerList))
+            if isUnauthorized(res):
+                logger.error("账号登录失效！")
+                return False
+            if not isSuccess(res):
+                logger.error("练习答案提交失败：%s" % apiMessage(res))
+                return False
+    res = json.loads(submitPaperPractice(token, activityId))
+    if not isSuccess(res):
+        logger.error("答题提交失败：%s" % apiMessage(res))
+        return False
+    logger.info("答题提交成功！")
+    logger.info(f"状态：{res['data']['result']['passedLabel']}，分数：{res['data']['result']['score']}")
+    logger.info("本次练习新收录 %i 题，已有 %i 题，题库现有 %i 题。" % (learned, existed, count_questions()))
+    if noAnswer:
+        logger.warning("有 %i 题接口没有返回正确答案（isCorrect），这些题无法自动收录。" % noAnswer)
+    return True
+
+def runExamTask(token, activityId, targetScore, timePerQuestion, showDonation=True):
+    logger.info("开始创建考试.")
+    logger.info("进入考试流程")
+    res = json.loads(preparePaper(token, activityId))
+    if not isSuccess(res):
+        logger.error("试卷创建失败：%s" % apiMessage(res))
+        return False
+    result = res["data"]["result"]
+    logger.info(f"试卷创建成功，答题机会为{result.get('totalTimes')}次，您已作答{result.get('doneTimes')}次，答题通过分数为{result.get('passScore')}分，程序将在两秒后开始作答。")
+    time.sleep(2)
+    questionList = json.loads(startPaper(token, activityId))
+    if not isSuccess(questionList):
+        logger.error("获取试卷数据失败：%s" % apiMessage(questionList))
+        return False
+    questionList = questionList["data"]["result"]["questionList"]
+    if not questionList:
+        logger.error("试卷里没有题目，请稍后重试。")
+        return False
+    logger.info("获取试卷数据，共 %i 题。" % len(questionList))
+    hit = 0
+    missing = []
+    for questionIndex, question in enumerate(questionList, start=1):
+        logger.info("正在作答第 %i 题..." % questionIndex)
+        questionId = question["id"]
+        rows = request_data(questionId)
+        rightAnswer = rows[0][1] if rows else None
+        if questionIndex <= targetScore:
+            if rightAnswer is None:
+                missing.append({"id":questionId, "title":question["title"], "options":[{"id":option["id"], "content":option["content"]} for option in question["optionList"]]})
+                logger.warning("题库中没有这道题，已记入 %s，本题先用第一个选项试一下。" % MISSING_FILE)
+                answer = question["optionList"][0]["id"]
+            else:
+                hit += 1
+                answer = rightAnswer
+        else:
+            answer = pickWrongAnswer(question, rightAnswer)
+        res = submitAnswer(token, questionId, activityId, timePerQuestion, answer)
+        if (res is None or not isSuccess(res)) and answer == WRONG_ANSWER and question["optionList"]:
+            logger.warning("占位错答没有被接受，改用本卷内的选项重试。")
+            res = submitAnswer(token, questionId, activityId, timePerQuestion, question["optionList"][0]["id"])
+        if res is None:
+            logger.error("提交失败，考试已停止！")
+            return False
+        if isUnauthorized(res):
+            logger.error("账号登录失效，请不要在脚本运行时登陆账号，否则将浪费一次考试机会.")
+            return False
+        if not isSuccess(res):
+            logger.error("本题提交异常，考试已停止：%s" % apiMessage(res))
+            return False
+        logger.success(f"答案保存成功，等待{timePerQuestion}秒，然后下一题.")
+        time.sleep(timePerQuestion)
+    saveMissing(missing)
+    logger.info("期望正确 %i 题，其中题库命中 %i 题。" % (targetScore, hit))
+    if missing:
+        logger.warning("本卷有 %i 题不在题库中，命中 %i 题，缺失题目已记入 %s。" % (len(missing), hit, MISSING_FILE))
+        logger.warning("建议先跑一遍练习任务把题库补全，再回来考试。")
+    res = json.loads(submitPaper(token, activityId))
+    if not isSuccess(res):
+        logger.error("出错了，错误：%s" % apiMessage(res))
+        return False
+    logger.success("交卷成功")
+    logger.info(f"得分：{res['data']['result']['score']}分，状态：{res['data']['result']['passedLabel']}，用时：{res['data']['result']['useTimeLabel']}")
+    if showDonation:
+        try:
+            os.startfile('donation.jpg') # show my code qwq
+        except Exception:
+            logger.warning("failed to show my qrcode TAT")
+    return True
+
+def runAutomaticTasks(token, activityList, activityNames, mockScore, formalScore, timePerQuestion):
+    tasks = [
+        ("顺序练习", 0, None),
+        ("随机练习", 1, None),
+        ("模拟考试", 2, mockScore),
+        ("正式考试", 3, formalScore),
+    ]
+    for expectedName, taskIndex, targetScore in tasks:
+        activityId = activityList[taskIndex]
+        activityName = activityNames[taskIndex]
+        logger.info("开始自动任务：%s（任务列表名称：%s）" % (expectedName, activityName))
+        if targetScore is None:
+            taskSucceeded = runPracticeTask(token, activityId)
+        else:
+            taskSucceeded = runExamTask(token, activityId, targetScore, timePerQuestion, showDonation=False)
+        if not taskSucceeded:
+            logger.error("自动任务失败，已停止后续项目：%s" % expectedName)
+            return False
+        logger.info("本项任务已完成：%s" % activityName)
+    return True
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
@@ -162,14 +313,34 @@ logger.info("部分学校要求先完成模拟考试，然后再完成正式考�
 logger.warning("脚本运行期间请不要登录！！！")
 logger.warning("脚本运行期间请不要登录！！！")
 logger.warning("脚本运行期间请不要登录！！！")
+automaticModeUsed = False
 while True:
     for index, name in enumerate(activityNames):
         logger.info("[%i] %s" % (index, name))
-    raw = input("请选择你要做的任务[输入数字序号，直接回车结束程序]：").strip()
+    logger.info("[A] 自动连续完成四个项目")
+    raw = input("请选择你要做的任务[输入数字序号，输入 A 自动完成四项，直接回车结束程序]：").strip()
     if raw == "":
         break
+    if raw.lower() == "a":
+        automaticModeUsed = True
+        if len(activityList) < 4:
+            logger.error("任务列表不足四项，无法启动自动模式。")
+            break
+        logger.info("自动模式将依次完成：顺序练习、随机练习、模拟考试、正式考试。")
+        mockScore = readInt("请输入模拟考试目标分数[0-100]：", 0, 100)
+        formalScore = readInt("请输入正式考试目标分数[0-100]：", 0, 100)
+        logger.info("请输入两个考试共用的每题答题间隔")
+        logger.info("时长参考：每题6秒->9-10分钟；每题7秒->11分钟；每题8秒->13分钟；每题9秒->15分钟")
+        logger.warning("若题目间隔过短，例如1秒，将会被系统判定为无效作答，并浪费一次答题机会！")
+        timePerQuestion = readInt("请输入每一题时长(秒)：", 1)
+        allSucceeded = runAutomaticTasks(
+            token, activityList, activityNames, mockScore, formalScore, timePerQuestion
+        )
+        if allSucceeded:
+            logger.success("四个项目已全部完成。")
+        break
     if not raw.isdigit() or int(raw) >= len(activityList):
-        logger.error("请输入列表里的数字序号。")
+        logger.error("请输入列表里的数字序号或 A。")
         continue
     choice = int(raw)
     activityId = activityList[choice]
@@ -177,120 +348,19 @@ while True:
     practiceMode = pickPracticeMode(activityName, choice)
     logger.info("任务识别为：%s" % ("练习" if practiceMode else "考试"))
     if practiceMode:
-        logger.info("进入练习流程")
-        res = json.loads(preparePaperPractice(token, activityId))
-        if not isSuccess(res):
-            abort("创建练习失败：%s" % apiMessage(res))
-        res = json.loads(startPaperPractice(token, activityId))
-        if not isSuccess(res):
-            abort("开始练习失败：%s" % apiMessage(res))
-        learned = 0
-        existed = 0
-        noAnswer = 0
-        for seq in range(0,10):
-            res = json.loads(getNear(token,activityId,seq))
-            if not isSuccess(res):
-                abort("第 %i 页题目获取失败：%s" % (seq, apiMessage(res)))
-            logger.info("页面请求：%i/9" % seq)
-            for _ in tqdm(res["data"]["result"]["questionList"], desc="答题进度"):
-                questionId = _["id"]
-                answerList = ",".join(__["id"] for __ in _["optionList"] if __.get("isCorrect") == 1)
-                if answerList:
-                    state = insert_data(questionId, answerList)
-                    if state is None:
-                        logger.warning("题库写入失败：%s" % questionId)
-                    elif state:
-                        learned += 1
-                    else:
-                        existed += 1
-                else:
-                    noAnswer += 1
-                res = json.loads(recordQuestionPractice(token, questionId, activityId, 10, seq, answerList))
-                if isUnauthorized(res):
-                    abort("账号登录失效！")
-        res = json.loads(submitPaperPractice(token, activityId))
-        if isSuccess(res):
-            logger.info("答题提交成功！")
-            logger.info(f"状态：{res['data']['result']['passedLabel']}，分数：{res['data']['result']['score']}")
-        else:
-            logger.error("答题提交失败：%s" % apiMessage(res))
-        logger.info("本次练习新收录 %i 题，已有 %i 题，题库现有 %i 题。" % (learned, existed, count_questions()))
-        if noAnswer:
-            logger.warning("有 %i 题接口没有返回正确答案（isCorrect），这些题无法自动收录。" % noAnswer)
+        taskSucceeded = runPracticeTask(token, activityId)
     else:
         logger.info("请输入期望分数")
-        n = int(input("请输入期望分数："))
+        targetScore = readInt("请输入期望分数[0-100]：", 0, 100)
         logger.info("请输入每一题时长")
         logger.info("时长参考：每题6秒->9-10分钟；每题7秒->11分钟；每题8秒->13分钟；每题9秒->15分钟")
         logger.warning("若题目间隔过短，例如1秒，将会被系统判定为无效作答，并浪费一次答题机会！")
-        time_con = int(input("请输入每一题时长(秒)："))
-        logger.info("开始创建考试.")
-        logger.info("进入考试流程")
-        res = json.loads(preparePaper(token, activityId))
-        if not isSuccess(res):
-            abort("试卷创建失败：%s" % apiMessage(res))
-        result = res["data"]["result"]
-        logger.info(f"试卷创建成功，答题机会为{result.get('totalTimes')}次，您已作答{result.get('doneTimes')}次，答题通过分数为{result.get('passScore')}分，程序将在两秒后开始作答。")
-        time.sleep(2)
-        questionList = json.loads(startPaper(token, activityId))
-        if not isSuccess(questionList):
-            abort("获取试卷数据失败：%s" % apiMessage(questionList))
-        questionList = questionList["data"]["result"]["questionList"]
-        if not questionList:
-            abort("试卷里没有题目，请稍后重试。")
-        logger.info("获取试卷数据，共 %i 题。" % len(questionList))
-        t = 1
-        hit = 0
-        missing = []
-        for _ in questionList:
-            logger.info("正在作答第 %i 题..." % t)
-            questionId = _["id"]
-            rows = request_data(questionId)
-            rightAnswer = rows[0][1] if rows else None
-            if t <= n:
-                if rightAnswer is None:
-                    missing.append({"id":questionId, "title":_["title"], "options":[{"id":__["id"], "content":__["content"]} for __ in _["optionList"]]})
-                    logger.warning("题库中没有这道题，已记入 %s，本题先用第一个选项试一下。" % MISSING_FILE)
-                    answer = _["optionList"][0]["id"]
-                else:
-                    hit += 1
-                    answer = rightAnswer
-            else:
-                answer = pickWrongAnswer(_, rightAnswer)
-            res = submitAnswer(token, questionId, activityId, time_con, answer)
-            if (res is None or not isSuccess(res)) and answer == WRONG_ANSWER and _["optionList"]:
-                # 服务端不认占位错答时退一步，用本卷内的选项，保证这道题能记上
-                logger.warning("占位错答没有被接受，改用本卷内的选项重试。")
-                res = submitAnswer(token, questionId, activityId, time_con, _["optionList"][0]["id"])
-            if res is None:
-                logger.error("提交失败，跳过本题！")
-            elif isUnauthorized(res):
-                abort("账号登录失效，请不要在脚本运行时登陆账号，否则将浪费一次考试机会.")
-            elif not isSuccess(res):
-                logger.warning("本题提交异常：%s" % apiMessage(res))
-            else:
-                logger.success(f"答案保存成功，等待{time_con}秒，然后下一题.")
-            t += 1
-            time.sleep(time_con)
-        saveMissing(missing)
-        logger.info("期望正确 %i 题，其中题库命中 %i 题。" % (n, hit))
-        if missing:
-            logger.warning("本卷有 %i 题不在题库中，命中 %i 题，缺失题目已记入 %s。" % (len(missing), hit, MISSING_FILE))
-            logger.warning("建议先跑一遍练习任务把题库补全，再回来考试。")
-        res = json.loads(submitPaper(token, activityId))
-        if isSuccess(res):
-            logger.success("交卷成功")
-            logger.info(f"得分：{res['data']['result']['score']}分，状态：{res['data']['result']['passedLabel']}，用时：{res['data']['result']['useTimeLabel']}")
-            try:
-                os.startfile('donation.jpg') # show my code qwq
-            except:
-                logger.warning("failed to show my qrcode TAT")
-        else:
-            abort("出错了，错误：%s" % apiMessage(res))
-        
+        timePerQuestion = readInt("请输入每一题时长(秒)：", 1)
+        taskSucceeded = runExamTask(token, activityId, targetScore, timePerQuestion)
+    if not taskSucceeded:
+        logger.error("任务执行失败，程序已停止。")
+        break
     logger.info("本项任务已完成：%s" % activityName)
-    # if input("其它任务还要刷吗？[输入y继续，直接回车退出]：").strip().lower() != "y":
-    #     break
 logger.success("程序完全结束.")
 res = json.loads(logout())
 if nameUnset == True:
@@ -298,5 +368,6 @@ if nameUnset == True:
 else:
     logger.success(f"登出成功，{userName}，感谢使用！")
 
-input()
+if not automaticModeUsed:
+    input()
 
