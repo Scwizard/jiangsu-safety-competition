@@ -1,6 +1,6 @@
 from loguru import logger
-from utils import pwdEncrypt, searchCollegeByName, getCaptcha, login, logout, getUserIndex, getActivities, recordQuestion, startPaper, preparePaper, getNear, submitPaper, index, preparePaperPractice, startPaperPractice, submitPaperPractice, recordQuestionPractice
-from dbProcess import request_data, insert_data, count_questions, count_legacy, DB_FILE
+from utils import pwdEncrypt, searchCollegeByName, getCaptcha, login, logout, getUserIndex, getActivities, recordQuestion, startPaper, preparePaper, getNear, submitPaper, index, preparePaperPractice, startPaperPractice, submitPaperPractice, recordQuestionPractice, BASE_DIR, CAPTCHA_FILE, showDonation
+from dbProcess import request_data, insert_data, insertDetail, lookupAnswer, migrateQuestion, backfillTitleIndex, count_questions, count_legacy, DB_FILE
 import requests
 import json
 import time
@@ -69,11 +69,17 @@ def saveMissing(missingList):
     with open(MISSING_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = BASE_DIR
 os.chdir(script_dir)
 print("切换到工作目录：", os.getcwd())
 
 logger.info("题库：%s 有 %i 题" % (DB_FILE, count_questions()))
+try:
+    _filled = backfillTitleIndex()
+    if _filled:
+        logger.info("题干指纹索引已补齐 %i 条，换届迁移可用。" % _filled)
+except Exception:
+    logger.warning("题干指纹索引补齐失败，不影响本次作答。")
 
 logger.info("正在请求学校列表...")
 try:
@@ -97,8 +103,8 @@ timestamp = str(int(time.time() * 1000))
 logger.info("给用户投喂验证码...")
 def killCaptcha(timestamp):
     getCaptcha(timestamp)
-    os.startfile("captcha.png")
-    res = input("请输入您看到的验证码，如果没有自动打开，请前往程序所在目录下打开captcha.png查看")
+    os.startfile(CAPTCHA_FILE)
+    res = input("请输入您看到的验证码，如果没有自动打开，请前往程序所在目录下打开captcha.png查看：")
     return res
 
 captcha = killCaptcha(timestamp)
@@ -205,6 +211,7 @@ while True:
                         existed += 1
                 else:
                     noAnswer += 1
+                insertDetail(questionId, _["title"], _["optionList"])
                 res = json.loads(recordQuestionPractice(token, questionId, activityId, 10, seq, answerList))
                 if isUnauthorized(res):
                     abort("账号登录失效！")
@@ -245,15 +252,19 @@ while True:
         for _ in questionList:
             logger.info("正在作答第 %i 题..." % t)
             questionId = _["id"]
-            rows = request_data(questionId)
-            rightAnswer = rows[0][1] if rows else None
+            rightAnswer, how = lookupAnswer(questionId, _["title"], _["optionList"])
             if t <= n:
                 if rightAnswer is None:
-                    missing.append({"id":questionId, "title":_["title"], "options":[{"id":__["id"], "content":__["content"]} for __ in _["optionList"]]})
-                    logger.warning("题库中没有这道题，已记入 %s，本题先用第一个选项试一下。" % MISSING_FILE)
+                    missing.append({"id":questionId, "title":_["title"], "reason":how,
+                                    "options":[{"id":__["id"], "content":__["content"]} for __ in _["optionList"]]})
+                    logger.warning("题库中没有这道题（%s），已记入 %s，本题先用第一个选项试一下。" % (how, MISSING_FILE))
                     answer = _["optionList"][0]["id"]
                 else:
                     hit += 1
+                    if how != "id":
+                        # 平台重导过题库，题目/选项 UUID 全换了；按题干把旧答案翻译到新选项上，并回写新 ID
+                        logger.info("题目 ID 已变更，按题干命中旧题答案（%s），已回写新题目 ID。" % how)
+                        migrateQuestion(questionId, _["title"], rightAnswer, _["optionList"])
                     answer = rightAnswer
             else:
                 answer = pickWrongAnswer(_, rightAnswer)
@@ -282,7 +293,7 @@ while True:
             logger.success("交卷成功")
             logger.info(f"得分：{res['data']['result']['score']}分，状态：{res['data']['result']['passedLabel']}，用时：{res['data']['result']['useTimeLabel']}")
             try:
-                os.startfile('donation.jpg') # show my code qwq
+                showDonation() # show my code qwq
             except:
                 logger.warning("failed to show my qrcode TAT")
         else:
